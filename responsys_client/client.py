@@ -6,7 +6,13 @@ from urlparse import urljoin
 import pytz
 import requests
 
-from exceptions import ResponsysClientError
+from exceptions import (
+    ResponsysClientError,
+    ResponsysTimeoutError,
+    ResponsysLimitError,
+    ResponsysHTTPError,
+    ResponsysAuthError,
+)
 from utils import convert_to_list_of_dicts
 from utils import convert_to_table_structure
 
@@ -233,8 +239,7 @@ class ResponsysClient(object):
             response = requests.request(method, url, params=params, json=json, headers=headers,
                                         timeout=self.DEFAULT_REQUEST_TIMEOUT_IN_SECONDS)
         except requests.exceptions.Timeout:
-            raise ResponsysClientError('There was a timeout error sending a request to Responsys.'
-                                       'Method: {}, URL: {}'.format(method, url))
+            raise ResponsysTimeoutError(method, url)
        
         if not retry and response.status_code == 429:
             time.sleep(self.RESPONSYS_RATE_LIMIT_WAITING_PERIOD_IN_SECONDS)
@@ -246,19 +251,14 @@ class ResponsysClient(object):
     def _check_for_record_limit_quantity(self, member_records):
         limit = self.RESPONSYS_RECORD_PROCESS_LIMIT_QUANTITY
         if len(member_records) > limit:
-            raise ResponsysClientError('A max of {} members may be created or updated at '
-                                       'one time.'.format(limit))
+            raise ResponsysLimitError('A max of {} members may be created or updated at '
+                                      'one time.'.format(limit))
 
     @staticmethod
     def _check_for_valid_response(response, expected_status_code=200):
         if response.status_code != expected_status_code:
-            request = response.request
-
-            raise ResponsysClientError('There was an issue sending a request to Responsys. '
-                                       'Request Method: {}. Request Path: {}. Request Body: {}.'
-                                       'Response Status Code: {}. Response Text: {}.'
-                                       .format(request.method, request.path_url, request.body,
-                                               response.status_code, response.text))
+            raise ResponsysHTTPError('There was an issue sending a request to Responsys.',
+                                     response)
 
     def _is_invalid_token_response(self, response):
         invalid = False
@@ -309,9 +309,7 @@ class ResponsysClient(object):
         response = self._send_request(method, url, params=params, headers=headers)
 
         if response.status_code != 200:
-            raise ResponsysClientError('There was an issue sending a login request '
-                                       'to Responsys. Status Code: {}. Response Text: {}'
-                                       .format(response.status_code, response.text))
+            raise ResponsysAuthError(response)
 
         self._update_access_items(response)
 
